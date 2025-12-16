@@ -681,42 +681,59 @@ with tab3:
     
     # Correlation heatmap
     st.markdown("### 🔥 Correlation Heatmap")
-    corr_cols = ['gold_lr', 'silver_lr', 'platinum_lr', 'palladium_lr', 'vix_lr', 'usd_index_lr']
-    corr_data = df[corr_cols].dropna()
-    corr_matrix = corr_data.corr()
     
-    # Create nicer labels
-    labels = ['Gold', 'Silver', 'Platinum', 'Palladium', 'VIX', 'USD Index']
-    
-    # Create heatmap
-    fig = go.Figure(data=go.Heatmap(
-        z=corr_matrix.values,
-        x=labels,
-        y=labels,
-        colorscale='RdBu_r',
-        zmid=0,
-        zmin=-1,
-        zmax=1,
-        text=[[f'{val:.3f}' for val in row] for row in corr_matrix.values],
-        texttemplate='%{text}',
-        textfont={"size": 14},
-        hovertemplate='%{y} vs %{x}<br>Correlation: %{z:.3f}<extra></extra>',
-        showscale=True
-    ))
-    
-    fig.update_layout(
-        title=dict(
-            text='Asset Correlation Matrix',
-            font=dict(size=18, color='#333')
-        ),
-        template='plotly_white',
-        height=600,
-        xaxis=dict(side='bottom'),
-        yaxis=dict(side='left', autorange='reversed'),
-        margin=dict(l=80, r=80, t=80, b=80)
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
+    try:
+        corr_cols = ['gold_lr', 'silver_lr', 'platinum_lr', 'palladium_lr', 'vix_lr', 'usd_index_lr']
+        corr_data = df[corr_cols].dropna()
+        corr_matrix = corr_data.corr()
+        
+        # Create nicer labels
+        labels = ['Gold', 'Silver', 'Platinum', 'Palladium', 'VIX', 'USD Index']
+        
+        # Create heatmap using plotly express (simpler)
+        fig = px.imshow(
+            corr_matrix,
+            labels=dict(x="Asset", y="Asset", color="Correlation"),
+            x=labels,
+            y=labels,
+            color_continuous_scale='RdBu_r',
+            color_continuous_midpoint=0,
+            aspect="auto",
+            text_auto='.3f'
+        )
+        
+        fig.update_layout(
+            title=dict(
+                text='Asset Correlation Matrix',
+                font=dict(size=18, color='#333')
+            ),
+            height=600,
+            xaxis=dict(side='bottom'),
+            yaxis=dict(side='left')
+        )
+        
+        fig.update_traces(
+            textfont={"size": 14},
+            hovertemplate='%{y} vs %{x}<br>Correlation: %{z:.3f}<extra></extra>'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        st.error(f"Could not generate correlation heatmap. Error: {str(e)}")
+        # Fallback: show correlation matrix as a styled dataframe
+        st.markdown("**Correlation Matrix (Table View)**")
+        corr_display = corr_matrix.copy()
+        corr_display.index = labels
+        corr_display.columns = labels
+        
+        styled_corr = corr_display.style.background_gradient(
+            cmap='RdBu_r',
+            vmin=-1,
+            vmax=1
+        ).format('{:.3f}')
+        
+        st.dataframe(styled_corr, use_container_width=True)
     
     # Recent performance
     st.markdown("### 📅 Recent Performance (Last 30 Days)")
