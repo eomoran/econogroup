@@ -688,17 +688,26 @@ with tab3:
     # Create nicer labels
     labels = ['Gold', 'Silver', 'Platinum', 'Palladium', 'VIX', 'USD Index']
     
+    # Create heatmap with improved settings
     fig = go.Figure(data=go.Heatmap(
         z=corr_matrix.values,
         x=labels,
         y=labels,
-        colorscale='RdBu',
+        colorscale='RdBu_r',
         zmid=0,
-        text=corr_matrix.values.round(3),
+        zmin=-1,
+        zmax=1,
+        text=np.round(corr_matrix.values, 3),
         texttemplate='%{text}',
-        textfont={"size": 12},
-        colorbar=dict(title="Correlation"),
-        hovertemplate='%{x} vs %{y}<br>Correlation: %{z:.3f}<extra></extra>'
+        textfont={"size": 14, "color": "black"},
+        colorbar=dict(
+            title="Correlation",
+            titleside="right",
+            tickmode="linear",
+            tick0=-1,
+            dtick=0.5
+        ),
+        hovertemplate='%{y} vs %{x}<br>Correlation: %{z:.3f}<extra></extra>'
     ))
     
     fig.update_layout(
@@ -708,8 +717,16 @@ with tab3:
         ),
         template='plotly_white',
         height=600,
-        xaxis=dict(side='bottom'),
-        yaxis=dict(side='left')
+        width=800,
+        xaxis=dict(
+            side='bottom',
+            tickangle=0
+        ),
+        yaxis=dict(
+            side='left',
+            autorange='reversed'
+        ),
+        margin=dict(l=100, r=100, t=100, b=100)
     )
     
     st.plotly_chart(fig, use_container_width=True)
@@ -733,8 +750,6 @@ st.markdown("""
         <p><em>For educational purposes only - Not financial advice</em></p>
     </div>
 """, unsafe_allow_html=True)
-
-
 
 
 
