@@ -10,6 +10,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
@@ -196,11 +199,22 @@ with tab1:
             'Variable': model_ols.params.index,
             'Coefficient': model_ols.params.values,
             'P-value': model_ols.pvalues.values,
-            'Significant': ['✅' if p < 0.05 else '❌' for p in model_ols.pvalues.values]
+            'Significant': ['✅ Yes' if p < 0.05 else '❌ No' for p in model_ols.pvalues.values]
         })
         
-        st.dataframe(coef_df.style.highlight_max(subset=['Coefficient'], color='lightgreen')
-                    .highlight_min(subset=['Coefficient'], color='lightcoral'), use_container_width=True)
+        # Format the dataframe nicely
+        coef_df['Coefficient'] = coef_df['Coefficient'].apply(lambda x: f"{x:.6f}")
+        coef_df['P-value'] = coef_df['P-value'].apply(lambda x: f"{x:.4f}")
+        
+        # Style the dataframe
+        def highlight_significant(row):
+            if '✅' in row['Significant']:
+                return ['background-color: #d4edda'] * len(row)
+            else:
+                return ['background-color: #f8d7da'] * len(row)
+        
+        styled_df = coef_df.style.apply(highlight_significant, axis=1)
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
         
         # Interpretation
         st.markdown("#### 🧠 Key Insights:")
@@ -212,22 +226,67 @@ with tab1:
         
         # Residuals plot
         st.markdown("#### 📉 Model Diagnostics")
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+        
+        # Create Plotly subplots
+        from plotly.subplots import make_subplots
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=('Residuals Over Time', 'Q-Q Plot')
+        )
         
         # Residuals over time
-        ax1.plot(model_ols.resid.index, model_ols.resid.values, alpha=0.7, linewidth=0.5)
-        ax1.axhline(y=0, color='r', linestyle='--', linewidth=2)
-        ax1.set_title('Residuals Over Time')
-        ax1.set_xlabel('Date')
-        ax1.set_ylabel('Residuals')
-        ax1.grid(True, alpha=0.3)
+        fig.add_trace(
+            go.Scatter(
+                x=model_ols.resid.index,
+                y=model_ols.resid.values,
+                mode='lines',
+                line=dict(color='steelblue', width=1),
+                name='Residuals',
+                hovertemplate='Date: %{x}<br>Residual: %{y:.4f}<extra></extra>'
+            ),
+            row=1, col=1
+        )
+        fig.add_hline(y=0, line_dash="dash", line_color="red", line_width=2, row=1, col=1)
         
-        # QQ plot
-        sm.qqplot(model_ols.resid, line='s', ax=ax2)
-        ax2.set_title('Q-Q Plot')
-        ax2.grid(True, alpha=0.3)
+        # Q-Q plot
+        from scipy import stats
+        (osm, osr), (slope, intercept, r) = stats.probplot(model_ols.resid, dist="norm")
+        fig.add_trace(
+            go.Scatter(
+                x=osm,
+                y=osr,
+                mode='markers',
+                marker=dict(color='steelblue', size=4),
+                name='Residuals',
+                hovertemplate='Theoretical: %{x:.2f}<br>Sample: %{y:.2f}<extra></extra>'
+            ),
+            row=1, col=2
+        )
+        # Add reference line
+        fig.add_trace(
+            go.Scatter(
+                x=osm,
+                y=slope * osm + intercept,
+                mode='lines',
+                line=dict(color='red', dash='dash', width=2),
+                name='Reference Line'
+            ),
+            row=1, col=2
+        )
         
-        st.pyplot(fig)
+        fig.update_xaxes(title_text="Date", row=1, col=1, showgrid=True, gridcolor='LightGray')
+        fig.update_xaxes(title_text="Theoretical Quantiles", row=1, col=2, showgrid=True, gridcolor='LightGray')
+        fig.update_yaxes(title_text="Residuals", row=1, col=1, showgrid=True, gridcolor='LightGray')
+        fig.update_yaxes(title_text="Sample Quantiles", row=1, col=2, showgrid=True, gridcolor='LightGray')
+        
+        fig.update_layout(
+            height=400,
+            showlegend=False,
+            template='plotly_white',
+            hovermode='closest'
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
         
     elif model_choice == '📈 ARIMA Forecasting':
         st.markdown("### 🔮 ARIMA: Price Return Forecasting")
@@ -260,7 +319,14 @@ with tab1:
             arma_df = pd.DataFrame(arma_results).sort_values('AIC')
         
         st.markdown("#### 🏆 Best ARIMA Models (by AIC)")
-        st.dataframe(arma_df.head(5), use_container_width=True)
+        
+        # Style the table
+        styled_arma = arma_df.head(5).style.background_gradient(
+            cmap='RdYlGn_r',
+            subset=['AIC', 'BIC']
+        ).format({'AIC': '{:.2f}', 'BIC': '{:.2f}'})
+        
+        st.dataframe(styled_arma, use_container_width=True, hide_index=True)
         
         # Fit best model
         best_p = int(arma_df.iloc[0]['AR(p)'])
@@ -278,26 +344,67 @@ with tab1:
         # Generate forecast
         forecast = best_fitted.forecast(steps=forecast_days)
         
-        # Plot
-        fig, ax = plt.subplots(figsize=(12, 6))
+        # Create interactive Plotly chart
+        fig = go.Figure()
         
         # Historical returns (last 252 days)
-        ax.plot(returns.index[-252:], returns.values[-252:], label='Historical Returns', color='steelblue', linewidth=2)
+        historical_data = returns.iloc[-252:]
+        fig.add_trace(go.Scatter(
+            x=historical_data.index,
+            y=historical_data.values,
+            mode='lines',
+            name='Historical Returns',
+            line=dict(color='steelblue', width=2),
+            hovertemplate='Date: %{x}<br>Return: %{y:.4f}%<extra></extra>'
+        ))
         
         # Forecast
         future_dates = pd.date_range(returns.index[-1] + timedelta(days=1), periods=forecast_days, freq='B')
-        ax.plot(future_dates, forecast.values, label='Forecast', color='orange', linewidth=2, linestyle='--')
-        ax.axhline(y=0, color='red', linestyle=':', alpha=0.5)
+        fig.add_trace(go.Scatter(
+            x=future_dates,
+            y=forecast.values,
+            mode='lines+markers',
+            name='Forecast',
+            line=dict(color='orange', width=3, dash='dash'),
+            marker=dict(size=8, color='orange', symbol='circle'),
+            hovertemplate='Date: %{x}<br>Forecast: %{y:.4f}%<extra></extra>'
+        ))
         
-        ax.set_title(f'{metal_choice.title()} Returns Forecast - ARMA({best_p},{best_q})', fontsize=14, fontweight='bold')
-        ax.set_xlabel('Date')
-        ax.set_ylabel('Log Returns')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        plt.xticks(rotation=45)
-        plt.tight_layout()
+        # Zero line
+        fig.add_hline(y=0, line_dash="dot", line_color="red", opacity=0.5)
         
-        st.pyplot(fig)
+        # Update layout
+        fig.update_layout(
+            title=dict(
+                text=f'{metal_choice.title()} Returns Forecast - ARMA({best_p},{best_q})',
+                font=dict(size=18, color='#333', family='Arial Black')
+            ),
+            xaxis_title='Date',
+            yaxis_title='Log Returns',
+            hovermode='x unified',
+            template='plotly_white',
+            height=500,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1
+            ),
+            xaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='LightGray'
+            ),
+            yaxis=dict(
+                showgrid=True,
+                gridwidth=1,
+                gridcolor='LightGray'
+            )
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
         
         # Forecast summary
         st.markdown("#### 🎲 Forecast Summary")
@@ -305,7 +412,16 @@ with tab1:
             'Date': future_dates.strftime('%Y-%m-%d'),
             'Predicted Return (%)': (forecast.values * 100).round(4)
         })
-        st.dataframe(forecast_df, use_container_width=True)
+        
+        # Style the dataframe
+        def color_returns(val):
+            if isinstance(val, (int, float)):
+                color = '#d4edda' if val > 0 else '#f8d7da' if val < 0 else 'white'
+                return f'background-color: {color}'
+            return ''
+        
+        styled_forecast = forecast_df.style.applymap(color_returns, subset=['Predicted Return (%)'])
+        st.dataframe(styled_forecast, use_container_width=True, hide_index=True)
         
         avg_forecast = forecast.mean() * 100
         if avg_forecast > 0:
@@ -344,36 +460,88 @@ with tab1:
             'Value': garch_fitted.params.values,
             'Std Error': garch_fitted.std_err.values
         })
-        st.dataframe(params_df, use_container_width=True)
+        
+        # Format and style
+        params_df['Value'] = params_df['Value'].apply(lambda x: f"{x:.6f}")
+        params_df['Std Error'] = params_df['Std Error'].apply(lambda x: f"{x:.6f}")
+        
+        styled_params = params_df.style.set_properties(**{
+            'background-color': '#f0f2f6',
+            'border': '1px solid #ddd'
+        })
+        
+        st.dataframe(styled_params, use_container_width=True, hide_index=True)
         
         # Generate forecast
         forecast_vol = garch_fitted.forecast(horizon=forecast_days)
         variance_forecast = forecast_vol.variance.values[-1]
         
         # Plot volatility
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8))
+        st.markdown("#### 📊 Volatility Analysis")
         
         # Conditional volatility
         cond_vol = garch_fitted.conditional_volatility
-        ax1.plot(cond_vol.index[-252:], cond_vol.values[-252:], label='Conditional Volatility', color='purple', linewidth=2)
-        ax1.set_title(f'{metal_choice.title()} Conditional Volatility (Last Year)', fontweight='bold')
-        ax1.set_xlabel('Date')
-        ax1.set_ylabel('Volatility (%)')
-        ax1.legend()
-        ax1.grid(True, alpha=0.3)
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Scatter(
+            x=cond_vol.index[-252:],
+            y=cond_vol.values[-252:],
+            mode='lines',
+            name='Conditional Volatility',
+            line=dict(color='purple', width=2),
+            fill='tozeroy',
+            fillcolor='rgba(128, 0, 128, 0.2)',
+            hovertemplate='Date: %{x}<br>Volatility: %{y:.3f}%<extra></extra>'
+        ))
+        
+        fig.update_layout(
+            title=dict(
+                text=f'{metal_choice.title()} Conditional Volatility (Last Year)',
+                font=dict(size=16, color='#333', family='Arial Black')
+            ),
+            xaxis_title='Date',
+            yaxis_title='Volatility (%)',
+            template='plotly_white',
+            height=400,
+            hovermode='x unified',
+            xaxis=dict(showgrid=True, gridcolor='LightGray'),
+            yaxis=dict(showgrid=True, gridcolor='LightGray')
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
         
         # Volatility forecast
+        st.markdown("#### 🔮 Volatility Forecast")
         future_dates = pd.date_range(returns.index[-1] + timedelta(days=1), periods=forecast_days, freq='D')
-        ax2.plot(future_dates, np.sqrt(variance_forecast), marker='o', linestyle='--', 
-                color='orange', linewidth=2, markersize=6)
-        ax2.set_title(f'Volatility Forecast (Next {forecast_days} Days)', fontweight='bold')
-        ax2.set_xlabel('Date')
-        ax2.set_ylabel('Volatility (%)')
-        ax2.grid(True, alpha=0.3)
-        plt.xticks(rotation=45)
         
-        plt.tight_layout()
-        st.pyplot(fig)
+        fig2 = go.Figure()
+        
+        fig2.add_trace(go.Scatter(
+            x=future_dates,
+            y=np.sqrt(variance_forecast),
+            mode='lines+markers',
+            name='Forecast',
+            line=dict(color='orange', width=3, dash='dash'),
+            marker=dict(size=10, color='orange', symbol='diamond'),
+            hovertemplate='Date: %{x}<br>Forecast Vol: %{y:.3f}%<extra></extra>'
+        ))
+        
+        fig2.update_layout(
+            title=dict(
+                text=f'Volatility Forecast (Next {forecast_days} Days)',
+                font=dict(size=16, color='#333', family='Arial Black')
+            ),
+            xaxis_title='Date',
+            yaxis_title='Volatility (%)',
+            template='plotly_white',
+            height=400,
+            hovermode='x unified',
+            xaxis=dict(showgrid=True, gridcolor='LightGray'),
+            yaxis=dict(showgrid=True, gridcolor='LightGray')
+        )
+        
+        st.plotly_chart(fig2, use_container_width=True)
         
         # Volatility stats
         st.markdown("#### 📊 Volatility Statistics")
@@ -413,28 +581,86 @@ with tab2:
     days = period_map[period]
     
     # Price chart
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.plot(df.index[-days:], df[metal_choice].iloc[-days:], linewidth=2, color='gold' if metal_choice=='gold' else 'silver')
-    ax.set_title(f'{metal_choice.title()} Price - Last {period}', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Date', fontsize=12)
-    ax.set_ylabel('Price (USD)', fontsize=12)
-    ax.grid(True, alpha=0.3)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    st.pyplot(fig)
+    metal_colors = {
+        'gold': '#FFD700',
+        'silver': '#C0C0C0',
+        'platinum': '#E5E4E2',
+        'palladium': '#CED0DD'
+    }
+    
+    fig = go.Figure()
+    
+    price_data = df[metal_choice].iloc[-days:]
+    fig.add_trace(go.Scatter(
+        x=price_data.index,
+        y=price_data.values,
+        mode='lines',
+        name=metal_choice.title(),
+        line=dict(color=metal_colors.get(metal_choice, 'steelblue'), width=2.5),
+        fill='tozeroy',
+        fillcolor=f'rgba({int(metal_colors.get(metal_choice, "#4682B4")[1:3], 16)}, {int(metal_colors.get(metal_choice, "#4682B4")[3:5], 16)}, {int(metal_colors.get(metal_choice, "#4682B4")[5:7], 16)}, 0.1)',
+        hovertemplate='Date: %{x}<br>Price: $%{y:.2f}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        title=dict(
+            text=f'{metal_choice.title()} Price - Last {period}',
+            font=dict(size=20, color='#333', family='Arial Black')
+        ),
+        xaxis_title='Date',
+        yaxis_title='Price (USD)',
+        template='plotly_white',
+        height=500,
+        hovermode='x unified',
+        xaxis=dict(showgrid=True, gridcolor='LightGray'),
+        yaxis=dict(showgrid=True, gridcolor='LightGray')
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
     
     # Returns distribution
     st.markdown("### 📊 Returns Distribution")
-    fig, ax = plt.subplots(figsize=(12, 4))
-    returns_subset = df[f'{metal_choice}_lr'].dropna().iloc[-days:]
-    ax.hist(returns_subset * 100, bins=50, color='steelblue', alpha=0.7, edgecolor='black')
-    ax.axvline(x=returns_subset.mean() * 100, color='red', linestyle='--', linewidth=2, label=f'Mean: {returns_subset.mean()*100:.3f}%')
-    ax.set_title(f'{metal_choice.title()} Daily Returns Distribution', fontsize=14, fontweight='bold')
-    ax.set_xlabel('Return (%)')
-    ax.set_ylabel('Frequency')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    st.pyplot(fig)
+    returns_subset = df[f'{metal_choice}_lr'].dropna().iloc[-days:] * 100
+    
+    fig2 = go.Figure()
+    
+    fig2.add_trace(go.Histogram(
+        x=returns_subset,
+        nbinsx=50,
+        name='Returns',
+        marker=dict(
+            color='steelblue',
+            line=dict(color='darkblue', width=1)
+        ),
+        hovertemplate='Return Range: %{x:.2f}%<br>Count: %{y}<extra></extra>'
+    ))
+    
+    # Add mean line
+    mean_return = returns_subset.mean()
+    fig2.add_vline(
+        x=mean_return,
+        line_dash="dash",
+        line_color="red",
+        line_width=3,
+        annotation_text=f'Mean: {mean_return:.3f}%',
+        annotation_position="top right"
+    )
+    
+    fig2.update_layout(
+        title=dict(
+            text=f'{metal_choice.title()} Daily Returns Distribution',
+            font=dict(size=18, color='#333', family='Arial Black')
+        ),
+        xaxis_title='Return (%)',
+        yaxis_title='Frequency',
+        template='plotly_white',
+        height=400,
+        showlegend=False,
+        xaxis=dict(showgrid=True, gridcolor='LightGray'),
+        yaxis=dict(showgrid=True, gridcolor='LightGray')
+    )
+    
+    st.plotly_chart(fig2, use_container_width=True)
 
 with tab3:
     st.markdown("## 🎲 Quick Statistics Dashboard")
@@ -459,11 +685,34 @@ with tab3:
     corr_data = df[corr_cols].dropna()
     corr_matrix = corr_data.corr()
     
-    fig, ax = plt.subplots(figsize=(10, 8))
-    sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, 
-                square=True, linewidths=1, cbar_kws={"shrink": 0.8}, ax=ax)
-    ax.set_title('Asset Correlation Matrix', fontsize=14, fontweight='bold')
-    st.pyplot(fig)
+    # Create nicer labels
+    labels = ['Gold', 'Silver', 'Platinum', 'Palladium', 'VIX', 'USD Index']
+    
+    fig = go.Figure(data=go.Heatmap(
+        z=corr_matrix.values,
+        x=labels,
+        y=labels,
+        colorscale='RdBu',
+        zmid=0,
+        text=corr_matrix.values.round(3),
+        texttemplate='%{text}',
+        textfont={"size": 12},
+        colorbar=dict(title="Correlation"),
+        hovertemplate='%{x} vs %{y}<br>Correlation: %{z:.3f}<extra></extra>'
+    ))
+    
+    fig.update_layout(
+        title=dict(
+            text='Asset Correlation Matrix',
+            font=dict(size=18, color='#333', family='Arial Black')
+        ),
+        template='plotly_white',
+        height=600,
+        xaxis=dict(side='bottom'),
+        yaxis=dict(side='left')
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
     
     # Recent performance
     st.markdown("### 📅 Recent Performance (Last 30 Days)")
@@ -479,8 +728,14 @@ with tab3:
 st.markdown("---")
 st.markdown("""
     <div style='text-align: center; color: white;'>
-        <h4>🎓 Financial Econometrics Project - FIN41660</h4>
-        <p>Built with ❤️ using Streamlit | Data from Yahoo Finance</p>
-        <p><em>⚠️ For educational purposes only - Not financial advice!</em></p>
+        <h4>Financial Econometrics Project - FIN41660</h4>
+        <p>Built using Streamlit | Data from Yahoo Finance</p>
+        <p><em>For educational purposes only - Not financial advice</em></p>
     </div>
 """, unsafe_allow_html=True)
+
+
+
+
+
+
