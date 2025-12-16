@@ -97,3 +97,6 @@ If you encounter errors:
 ---
 
 Built with ❤️ using Python, Streamlit, and Financial Econometrics
+
+
+Streamlit file and READ.ME files were coded solely using CLAUDE on December 16th 2025, CLAUDE was given the ipynb file, and was asked to create a dashboard showing off the information that the file analysis
