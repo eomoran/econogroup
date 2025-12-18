@@ -28,6 +28,26 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+st.markdown(
+    """
+    <style>
+    html, body, [class*="stApp"] {
+        background-color: white !important;
+        color: black !important;
+    }
+
+    [data-testid="stSidebar"] {
+        background-color: #f5f5f5 !important;
+    }
+
+    * {
+        color-scheme: light !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # Custom CSS
 st.markdown("""
     <style>
