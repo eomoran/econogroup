@@ -147,9 +147,20 @@ if model_choice == 'OLS Regression':
     data_metal = df[[f'{metal_choice}_lr', 'vix_lr', 'usd_index_lr', 'wti_oil_lr', 
                      'us10y_yield_change', 'us2y_yield_change']].dropna()
     
-    # Fit OLS model
-    formula = f'{metal_choice}_lr ~ vix_lr + usd_index_lr + wti_oil_lr + us10y_yield_change + us2y_yield_change'
-    model_ols = smf.ols(formula=formula, data=data_metal).fit()
+    # Check if we have enough data
+    if len(data_metal) < 50:
+        st.error(f"Not enough data points for {metal_choice}. Need at least 50 observations, have {len(data_metal)}.")
+        st.stop()
+    
+    # Fit OLS model with error handling
+    try:
+        formula = f'{metal_choice}_lr ~ vix_lr + usd_index_lr + wti_oil_lr + us10y_yield_change + us2y_yield_change'
+        model_ols = smf.ols(formula=formula, data=data_metal).fit()
+    except Exception as e:
+        st.error(f"Error fitting OLS model: {str(e)}")
+        st.info(f"Data shape: {data_metal.shape}")
+        st.info(f"Missing values:\n{data_metal.isnull().sum()}")
+        st.stop()
     
     # Key metrics
     col1, col2, col3, col4 = st.columns(4)
@@ -282,7 +293,18 @@ elif model_choice == 'ARIMA Forecasting':
     
     # Prepare data
     returns = df[f'{metal_choice}_lr'].dropna()
-    returns = returns.asfreq('B')
+    
+    # Check if we have data
+    if len(returns) < 100:
+        st.error(f"Not enough data for {metal_choice}. Need at least 100 observations, have {len(returns)}.")
+        st.stop()
+    
+    try:
+        returns = returns.asfreq('B')
+    except Exception as e:
+        st.error(f"Error setting business day frequency: {str(e)}")
+        st.info("Attempting to continue without frequency setting...")
+        pass
     
     # Forecast settings
     col1, col2 = st.columns([3, 1])
@@ -453,6 +475,11 @@ else:  # GARCH
     # Prepare data
     returns = df[f'{metal_choice}_lr'].dropna() * 100
     
+    # Check if we have enough data
+    if len(returns) < 100:
+        st.error(f"Not enough data for {metal_choice}. Need at least 100 observations, have {len(returns)}.")
+        st.stop()
+    
     # Forecast settings
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -463,9 +490,14 @@ else:  # GARCH
     st.markdown("---")
     
     # Fit GARCH
-    with st.spinner("⚙️ Fitting GARCH(1,1) model..."):
-        garch_model = arch_model(returns, vol='GARCH', p=1, q=1)
-        garch_fitted = garch_model.fit(disp='off')
+    try:
+        with st.spinner("⚙️ Fitting GARCH(1,1) model..."):
+            garch_model = arch_model(returns, vol='GARCH', p=1, q=1)
+            garch_fitted = garch_model.fit(disp='off')
+    except Exception as e:
+        st.error(f"Error fitting GARCH model: {str(e)}")
+        st.info(f"This can happen with certain data patterns. Try a different metal or check your data.")
+        st.stop()
     
     # Model summary
     col1, col2 = st.columns([2, 1])
