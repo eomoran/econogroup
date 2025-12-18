@@ -31,9 +31,33 @@ st.set_page_config(
 # Custom CSS
 st.markdown("""
     <style>
+    /* Force light mode */
+    :root {
+        color-scheme: light !important;
+    }
+    
+    [data-testid="stAppViewContainer"] {
+        background-color: white !important;
+    }
+    
+    [data-testid="stHeader"] {
+        background-color: white !important;
+    }
+    
+    [data-testid="stSidebar"] {
+        background-color: #f0f2f6 !important;
+    }
+    
     .main {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     }
+    
+    /* Ensure all text is readable in light mode */
+    .stMarkdown, .stText, p, span, div {
+        color: #262730 !important;
+    }
+    
+    /* Button styling */
     .stButton>button {
         background-color: #FFD700;
         color: black;
@@ -48,26 +72,6 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
-
-st.markdown(
-    """
-    <style>
-    html, body, [class*="stApp"] {
-        background-color: white !important;
-        color: black !important;
-    }
-
-    [data-testid="stSidebar"] {
-        background-color: #f5f5f5 !important;
-    }
-
-    * {
-        color-scheme: light !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
 # Title
 st.markdown("# 💰 Precious Metals Forecasting Dashboard")
@@ -292,12 +296,29 @@ if model_choice == 'OLS Regression':
         vix_pval = model_ols.pvalues['vix_lr']
         
         if vix_pval < 0.05:
+            # Calculate 10% VIX impact
+            impact_10pct = vix_coef * 10
+            
             if vix_coef > 0:
-                st.success(f"**Positive Volatility Response** ✅\n\n{metal_choice.title()} returns increase when market volatility rises.\n\nCoefficient: {vix_coef:.4f}\n\nInterpretation: A 1% increase in VIX is associated with a {vix_coef:.4f}% increase in {metal_choice} returns.")
+                if abs(vix_coef) < 0.01:
+                    magnitude = "weakly positive"
+                elif abs(vix_coef) < 0.05:
+                    magnitude = "moderately positive"
+                else:
+                    magnitude = "strongly positive"
+                    
+                st.success(f"**{magnitude.title()} Response to Volatility** ✅\n\n{metal_choice.title()} exhibits a {magnitude} relationship with market volatility.\n\n**Coefficient:** {vix_coef:.4f}\n\n**Interpretation:** When VIX increases by 10%, {metal_choice} returns change by {impact_10pct:+.3f}%.")
             else:
-                st.warning(f"**Negative Volatility Response** ⚠️\n\n{metal_choice.title()} returns decrease when market volatility rises.\n\nCoefficient: {vix_coef:.4f}\n\nInterpretation: A 1% increase in VIX is associated with a {abs(vix_coef):.4f}% decrease in {metal_choice} returns.")
+                if abs(vix_coef) < 0.01:
+                    magnitude = "weakly negative"
+                elif abs(vix_coef) < 0.05:
+                    magnitude = "moderately negative"
+                else:
+                    magnitude = "strongly negative"
+                    
+                st.warning(f"**{magnitude.title()} Response to Volatility** ⚠️\n\n{metal_choice.title()} exhibits a {magnitude} relationship with market volatility.\n\n**Coefficient:** {vix_coef:.4f}\n\n**Interpretation:** When VIX increases by 10%, {metal_choice} returns change by {impact_10pct:+.3f}%.")
         else:
-            st.info(f"**No Significant Volatility Response**\n\nThe relationship between {metal_choice} and market volatility (VIX) is not statistically significant.\n\np-value: {vix_pval:.4f}\n\n*{metal_choice.title()} returns do not show a significant response to changes in market volatility.*")
+            st.info(f"**No Significant Response to Volatility**\n\n{metal_choice.title()} does not show a statistically significant relationship with market volatility.\n\n**Coefficient:** {vix_coef:.4f}\n**P-value:** {vix_pval:.4f}\n\n*Changes in VIX do not significantly explain {metal_choice} returns.*")
         
         st.metric("🎲 Durbin-Watson", f"{sm.stats.stattools.durbin_watson(model_ols.resid):.3f}", 
                  help="Tests for autocorrelation. ~2.0 is ideal")
