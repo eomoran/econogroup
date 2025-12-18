@@ -28,26 +28,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-st.markdown(
-    """
-    <style>
-    html, body, [class*="stApp"] {
-        background-color: white !important;
-        color: black !important;
-    }
-
-    [data-testid="stSidebar"] {
-        background-color: #f5f5f5 !important;
-    }
-
-    * {
-        color-scheme: light !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 # Custom CSS
 st.markdown("""
     <style>
@@ -68,6 +48,26 @@ st.markdown("""
     }
     </style>
 """, unsafe_allow_html=True)
+
+st.markdown(
+    """
+    <style>
+    html, body, [class*="stApp"] {
+        background-color: white !important;
+        color: black !important;
+    }
+
+    [data-testid="stSidebar"] {
+        background-color: #f5f5f5 !important;
+    }
+
+    * {
+        color-scheme: light !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # Title
 st.markdown("# 💰 Precious Metals Forecasting Dashboard")
@@ -135,11 +135,14 @@ def load_data():
         # Combine data with outer join first to see what we have
         df = prices.join(df1, how='outer')
         
-        # Forward fill missing values (common for some indices)
-        df = df.fillna(method='ffill').fillna(method='bfill')
+        # Forward fill missing values (common for some indices) - up to 5 days
+        df = df.fillna(method='ffill', limit=5).fillna(method='bfill', limit=5)
         
         # Now drop any rows that are still completely empty
         df = df.dropna(how='all')
+        
+        # For metals specifically, don't forward fill - only keep actual trading days
+        # But for indices, we already forward filled above
         
         # Calculate log returns
         metals = ['gold', 'silver', 'platinum', 'palladium']
@@ -209,6 +212,16 @@ if model_choice == 'OLS Regression':
     # Check if we have enough data
     if len(data_metal) < 50:
         st.error(f"Not enough data points for {metal_choice}. Need at least 50 observations, have {len(data_metal)}.")
+        
+        # Show debugging info
+        with st.expander("🔍 Debug Information"):
+            st.write(f"**Total rows in main dataframe:** {len(df)}")
+            st.write(f"**Rows with {metal_choice} returns:** {df[f'{metal_choice}_lr'].notna().sum()}")
+            st.write(f"**Missing values after selecting columns:**")
+            missing = df[[f'{metal_choice}_lr', 'vix_lr', 'usd_index_lr', 'wti_oil_lr', 
+                         'us10y_yield_change', 'us2y_yield_change']].isnull().sum()
+            st.dataframe(missing)
+            st.info("💡 Try selecting a different metal (Gold or Silver typically have the most data)")
         st.stop()
     
     # Fit OLS model with error handling
@@ -276,10 +289,15 @@ if model_choice == 'OLS Regression':
     with col2:
         st.markdown("### 🧠 Key Insights")
         vix_coef = model_ols.params['vix_lr']
-        if vix_coef > 0:
-            st.success(f"**Safe Haven Confirmed!**\n\nWhen VIX ↑ 1%, {metal_choice} returns ↑ {vix_coef:.4f}%")
+        vix_pval = model_ols.pvalues['vix_lr']
+        
+        if vix_pval < 0.05:
+            if vix_coef > 0:
+                st.success(f"**Positive Volatility Response** ✅\n\n{metal_choice.title()} returns increase when market volatility rises.\n\nCoefficient: {vix_coef:.4f}\n\nInterpretation: A 1% increase in VIX is associated with a {vix_coef:.4f}% increase in {metal_choice} returns.")
+            else:
+                st.warning(f"**Negative Volatility Response** ⚠️\n\n{metal_choice.title()} returns decrease when market volatility rises.\n\nCoefficient: {vix_coef:.4f}\n\nInterpretation: A 1% increase in VIX is associated with a {abs(vix_coef):.4f}% decrease in {metal_choice} returns.")
         else:
-            st.warning(f"**Not a Safe Haven!**\n\nWhen VIX ↑ 1%, {metal_choice} returns ↓ {abs(vix_coef):.4f}%")
+            st.info(f"**No Significant Volatility Response**\n\nThe relationship between {metal_choice} and market volatility (VIX) is not statistically significant.\n\np-value: {vix_pval:.4f}\n\n*{metal_choice.title()} returns do not show a significant response to changes in market volatility.*")
         
         st.metric("🎲 Durbin-Watson", f"{sm.stats.stattools.durbin_watson(model_ols.resid):.3f}", 
                  help="Tests for autocorrelation. ~2.0 is ideal")
@@ -688,4 +706,3 @@ st.markdown("""
         <p><em>For educational purposes only - Not financial advice</em></p>
     </div>
 """, unsafe_allow_html=True)
-
