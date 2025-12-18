@@ -299,10 +299,19 @@ if model_choice == 'OLS Regression':
             # Calculate 10% VIX impact
             impact_10pct = vix_coef * 10
             
-            if vix_coef > 0:
-                st.success(f"**Positive Response to Volatility** ✅\n\n{metal_choice.title()} moves with market volatility.\n\n**VIX Coefficient:** {vix_coef:.4f}\n\n**Interpretation:** When VIX rises by 10%, {metal_choice} returns typically change by {impact_10pct:+.3f}%.")
+            # Determine magnitude
+            abs_coef = abs(vix_coef)
+            if abs_coef < 0.02:
+                strength = "weak"
+            elif abs_coef < 0.08:
+                strength = "moderate"
             else:
-                st.warning(f"**Negative Response to Volatility** ⚠️\n\n{metal_choice.title()} moves against market volatility.\n\n**VIX Coefficient:** {vix_coef:.4f}\n\n**Interpretation:** When VIX rises by 10%, {metal_choice} returns typically change by {impact_10pct:+.3f}%.")
+                strength = "strong"
+            
+            if vix_coef > 0:
+                st.success(f"**Positive Response to Volatility** ✅\n\n{metal_choice.title()} shows a **{strength}** positive relationship with market volatility.\n\n**VIX Coefficient:** {vix_coef:.4f}\n\n**Interpretation:** When VIX rises by 10%, {metal_choice} returns typically change by {impact_10pct:+.3f}%.")
+            else:
+                st.warning(f"**Negative Response to Volatility** ⚠️\n\n{metal_choice.title()} shows a **{strength}** negative relationship with market volatility.\n\n**VIX Coefficient:** {vix_coef:.4f}\n\n**Interpretation:** When VIX rises by 10%, {metal_choice} returns typically change by {impact_10pct:+.3f}%.")
         else:
             st.info(f"**No Significant Response to Volatility**\n\n{metal_choice.title()} does not show a statistically significant relationship with market volatility.\n\n**VIX Coefficient:** {vix_coef:.4f}\n**P-value:** {vix_pval:.4f}\n\n*Changes in VIX do not significantly explain {metal_choice} returns.*")
         
@@ -713,4 +722,3 @@ st.markdown("""
         <p><em>For educational purposes only - Not financial advice</em></p>
     </div>
 """, unsafe_allow_html=True)
-
