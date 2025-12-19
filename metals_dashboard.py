@@ -20,6 +20,7 @@ from arch import arch_model
 import warnings
 warnings.filterwarnings('ignore')
 
+
 # Page config
 st.set_page_config(
     page_title="Metals Forecasting Dashboard",
@@ -27,52 +28,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# Custom CSS
-st.markdown("""
-    <style>
-    /* Force light mode */
-    :root {
-        color-scheme: light !important;
-    }
-    
-    [data-testid="stAppViewContainer"] {
-        background-color: white !important;
-    }
-    
-    [data-testid="stHeader"] {
-        background-color: white !important;
-    }
-    
-    [data-testid="stSidebar"] {
-        background-color: #f0f2f6 !important;
-    }
-    
-    .main {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    }
-    
-    /* Ensure all text is readable in light mode */
-    .stMarkdown, .stText, p, span, div {
-        color: #262730 !important;
-    }
-    
-    /* Button styling */
-    .stButton>button {
-        background-color: #FFD700;
-        color: black;
-        font-weight: bold;
-        border-radius: 10px;
-        border: 3px solid #FFA500;
-        padding: 10px 24px;
-    }
-    .stButton>button:hover {
-        background-color: #FFA500;
-        transform: scale(1.05);
-    }
-    </style>
-""", unsafe_allow_html=True)
-
 # Title
 st.markdown("# 💰 Precious Metals Forecasting Dashboard")
 st.markdown("### *Advanced Time Series Analysis with OLS, ARIMA & GARCH*")
@@ -80,100 +35,8 @@ st.markdown("---")
 
 # Data loading with caching
 @st.cache_data(ttl=3600)
-def load_data():
-    """Load precious metals and market indicator data"""
-    
-    tickers = {'gold': 'GC=F', 'silver': 'SI=F', 'platinum': 'PL=F', 'palladium': 'PA=F'}
-    
-    end_date = datetime.today()
-    start_date = end_date - timedelta(days=10*365)
-    
-    try:
-        # Download metals data
-        data = yf.download(
-            list(tickers.values()),
-            start=start_date.strftime("%Y-%m-%d"),
-            end=end_date.strftime("%Y-%m-%d"),
-            progress=False
-        )
-        
-        # Handle MultiIndex columns for multiple tickers
-        if isinstance(data.columns, pd.MultiIndex):
-            prices = data['Close'].copy()
-        else:
-            # Single ticker case
-            prices = pd.DataFrame(data['Close'])
-            prices.columns = ['Close']
-        
-        inverse_tickers = {v: k for k, v in tickers.items()}
-        prices = prices.rename(columns=inverse_tickers)
-        prices = prices.dropna(how='all')
-        
-        # Download market indicators
-        other_tickers = {
-            'vix': '^VIX',
-            'us2y_yield': '^IRX',
-            'usd_index': 'DX-Y.NYB',
-            'us10y_yield': '^TNX',
-            'wti_oil': 'CL=F'
-        }
-        
-        other_data = yf.download(
-            list(other_tickers.values()),
-            start=start_date.strftime("%Y-%m-%d"),
-            end=end_date.strftime("%Y-%m-%d"),
-            progress=False
-        )
-        
-        # Handle MultiIndex columns
-        if isinstance(other_data.columns, pd.MultiIndex):
-            df1 = other_data['Close'].copy()
-        else:
-            df1 = pd.DataFrame(other_data['Close'])
-            df1.columns = ['Close']
-        
-        inverse_other = {v: k for k, v in other_tickers.items()}
-        df1 = df1.rename(columns=inverse_other)
-        df1 = df1.dropna(how='all')
-        
-        # Combine data with outer join first to see what we have
-        df = prices.join(df1, how='outer')
-        
-        # Forward fill missing values (common for some indices) - up to 5 days
-        df = df.fillna(method='ffill', limit=5).fillna(method='bfill', limit=5)
-        
-        # Now drop any rows that are still completely empty
-        df = df.dropna(how='all')
-        
-        # For metals specifically, don't forward fill - only keep actual trading days
-        # But for indices, we already forward filled above
-        
-        # Calculate log returns
-        metals = ['gold', 'silver', 'platinum', 'palladium']
-        for metal in metals:
-            if metal in df.columns:
-                df[f'{metal}_lr'] = np.log(df[metal] / df[metal].shift(1))
-        
-        if 'vix' in df.columns:
-            df['vix_lr'] = np.log(df['vix'] / df['vix'].shift(1))
-        if 'usd_index' in df.columns:
-            df['usd_index_lr'] = np.log(df['usd_index'] / df['usd_index'].shift(1))
-        if 'wti_oil' in df.columns:
-            df['wti_oil_lr'] = np.log(df['wti_oil'] / df['wti_oil'].shift(1))
-        if 'us10y_yield' in df.columns:
-            df['us10y_yield_change'] = df['us10y_yield'] - df['us10y_yield'].shift(1)
-        if 'us2y_yield' in df.columns:
-            df['us2y_yield_change'] = df['us2y_yield'] - df['us2y_yield'].shift(1)
-        
-        # Drop infinite values
-        df = df.replace([np.inf, -np.inf], np.nan)
-        
-        return df, prices
-        
-    except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        # Return empty dataframes to prevent crashes
-        return pd.DataFrame(), pd.DataFrame()
+from data.data_loading import load_data
+
 
 # Load data
 with st.spinner("🔄 Loading market data..."):
@@ -281,12 +144,22 @@ if model_choice == 'OLS Regression':
         coef_df['P-value'] = coef_df['P-value'].apply(lambda x: f"{x:.4f}")
         
         # Style
-        def highlight_significant(row):
-            if '✅' in row['Significant']:
-                return ['background-color: #d4edda'] * len(row)
-            else:
-                return ['background-color: #f8d7da'] * len(row)
         
+        def highlight_significant(row):
+            # Detect current theme
+            theme = st.get_option("theme.base")
+            
+            if '✅' in row['Significant']:
+                if theme == "dark":
+                    return ['background-color: #1e5631'] * len(row)  # Dark green
+                else:
+                    return ['background-color: #d4edda'] * len(row)  # Light green
+            else:
+                if theme == "dark":
+                    return ['background-color: #5a1f1f'] * len(row)  # Dark red
+                else:
+                    return ['background-color: #f8d7da'] * len(row)  # Light red
+
         styled_df = coef_df.style.apply(highlight_significant, axis=1)
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
     
@@ -319,7 +192,7 @@ if model_choice == 'OLS Regression':
                  help="Tests for autocorrelation. ~2.0 is ideal")
     
     # Diagnostic plots
-    st.markdown("### 📈 Model Diagnostics")
+    st.markdown(f"### 📈 Model Diagnostics a {st.get_option('theme.base')}")
     
     fig = make_subplots(
         rows=1, cols=2,
